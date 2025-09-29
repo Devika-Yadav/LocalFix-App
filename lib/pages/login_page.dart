@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'myComplaints_page.dart';
 import 'signup_page.dart';
 import 'admin_complaints_page.dart'; // Import your admin page
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LoginPage extends StatefulWidget {
   @override
@@ -14,8 +16,25 @@ class _LoginPageState extends State<LoginPage> {
 
   String selectedRole = 'Public User'; // Default role
 
-  void _login(BuildContext context) {
-    if (selectedRole == 'Govt. Officer') {
+  void _login(BuildContext context) async {
+  try {
+    // ✅ Sign in with Firebase Auth
+    UserCredential userCredential = await FirebaseAuth.instance
+        .signInWithEmailAndPassword(
+      email: emailController.text.trim(),
+      password: passwordController.text.trim(),
+    );
+
+    // ✅ Fetch role from Firestore
+    DocumentSnapshot userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userCredential.user!.uid)
+        .get();
+
+    String role = userDoc['role'];
+
+    // ✅ Navigate based on role
+    if (role == 'Govt. Officer') {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => AdminComplaintsPage()),
@@ -26,7 +45,13 @@ class _LoginPageState extends State<LoginPage> {
         MaterialPageRoute(builder: (_) => MyComplaintsPage()),
       );
     }
+  } on FirebaseAuthException catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(e.message ?? "Login failed")),
+    );
   }
+}
+
 
   void _navigateToSignup(BuildContext context) {
     Navigator.push(
