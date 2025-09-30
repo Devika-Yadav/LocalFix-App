@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // REQUIRED
+import 'package:firebase_auth/firebase_auth.dart';     // REQUIRED
+import 'dart:convert';                                 // REQUIRED
 import 'complaint_page.dart';
+
 class MyComplaintsPage extends StatefulWidget {
   @override
   _MyComplaintsPageState createState() => _MyComplaintsPageState();
@@ -7,38 +11,46 @@ class MyComplaintsPage extends StatefulWidget {
 
 class _MyComplaintsPageState extends State<MyComplaintsPage> {
   bool isSidebarOpen = false;
+  // NOTE: REMOVING THE HARDCODED 'complaints' LIST
 
-  final List<Map<String, dynamic>> complaints = [
-    {
-      'title': 'Broken Street Light',
-      'description': 'The light near my house has been broken for 3 days.',
-      'status': 'In Progress',
-      'submittedAt': '2025-08-01',
-    },
-    {
-      'title': 'Potholes on Road',
-      'description': 'Huge potholes causing traffic jams.',
-      'status': 'Resolved',
-      'submittedAt': '2025-07-30',
-    },
-    {
-      'title': 'Garbage not collected',
-      'description': 'Garbage is not picked up from Sector 7A for 5 days.',
-      'status': 'Pending',
-      'submittedAt': '2025-08-03',
-    },
-  ];
+  final User? currentUser = FirebaseAuth.instance.currentUser;
 
   Color _getStatusColor(String status) {
     switch (status) {
       case 'Resolved':
+      case 'Completed':
         return Colors.green;
       case 'In Progress':
+      case 'Working':
         return Colors.orange;
       case 'Pending':
-        return Colors.red;
       default:
-        return Colors.grey;
+        return Colors.red;
+    }
+  }
+
+  // Helper function to decode and display the Base64 image
+  Widget _buildImage(String? base64String) {
+    if (base64String == null || base64String.isEmpty) {
+      return const SizedBox.shrink(); // Hide if no image data is present
+    }
+    try {
+      final imageBytes = base64Decode(base64String);
+      
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8.0, top: 8.0),
+        child: Image.memory(
+          imageBytes,
+          fit: BoxFit.cover,
+          height: 150,
+          width: double.infinity,
+        ),
+      );
+    } catch (e) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 8.0),
+        child: Text('Error loading image proof'),
+      );
     }
   }
 
@@ -47,11 +59,18 @@ class _MyComplaintsPageState extends State<MyComplaintsPage> {
     double sidebarWidth = 250;
     Duration duration = Duration(milliseconds: 300);
 
+    // Safety check for logged-in user
+    if (currentUser == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please log in to view your complaints.')),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Color(0xFFF8EDF9),
       body: Stack(
         children: [
-          // Sidebar
+          // Sidebar (UNCHANGED UI)
           AnimatedPositioned(
             duration: duration,
             left: isSidebarOpen ? 0 : -sidebarWidth,
@@ -86,7 +105,7 @@ class _MyComplaintsPageState extends State<MyComplaintsPage> {
             ),
           ),
 
-          // Main content
+          // Main content (UI UNCHANGED, DATA SOURCE CHANGED)
           AnimatedPositioned(
             duration: duration,
             left: isSidebarOpen ? sidebarWidth : 0,
@@ -99,7 +118,7 @@ class _MyComplaintsPageState extends State<MyComplaintsPage> {
                   isSidebarOpen ? BorderRadius.circular(16) : BorderRadius.zero,
               child: Column(
                 children: [
-                  // Custom Top AppBar
+                  // Custom Top AppBar (UNCHANGED UI)
                   Container(
                     height: 60,
                     decoration: BoxDecoration(
@@ -134,52 +153,85 @@ class _MyComplaintsPageState extends State<MyComplaintsPage> {
                     ),
                   ),
 
-                  // Complaints list
+                  // Complaints list (DATA SOURCE CHANGED TO STREAMBUILDER)
                   Expanded(
-                    child: ListView.builder(
-                      padding: EdgeInsets.all(16),
-                      itemCount: complaints.length,
-                      itemBuilder: (context, index) {
-                        final complaint = complaints[index];
-                        return Card(
-                          margin: EdgeInsets.only(bottom: 16),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                          color: Colors.white,
-                          elevation: 4,
-                          child: ExpansionTile(
-                            title: Text(
-                              complaint['title'],
-                              style: TextStyle(fontWeight: FontWeight.bold),
+                    child: StreamBuilder<QuerySnapshot>(
+                      // 1. Fetch only the complaints belonging to the current user
+                      stream: FirebaseFirestore.instance
+                          .collection('complaints')
+                          .where('userId', isEqualTo: currentUser!.uid) // CRITICAL FILTER
+                          .orderBy('timestamp', descending: true) 
+                          .snapshots(),
+                      
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+                        // This handles the Index error you saw earlier
+                        if (snapshot.hasError) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Text('Error loading complaints. Please ensure the Firestore Index is enabled. Error: ${snapshot.error}'),
                             ),
-                            subtitle: Text(
-                              "Status: ${complaint['status']}",
-                              style: TextStyle(
-                                  color: _getStatusColor(complaint['status'])),
-                            ),
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(12.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text("Description: ${complaint['description']}"),
-                                    SizedBox(height: 8),
-                                    Text("Submitted On: ${complaint['submittedAt']}"),
-                                    SizedBox(height: 8),
-                                    Text(
-                                      "Current Status: ${complaint['status']}",
-                                      style: TextStyle(
-                                        color: _getStatusColor(
-                                            complaint['status']),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
+                          );
+                        }
+                        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                          return const Center(child: Text('You have not filed any complaints yet.'));
+                        }
+
+                        final complaints = snapshot.data!.docs;
+                        
+                        return ListView.builder(
+                          padding: EdgeInsets.all(16),
+                          itemCount: complaints.length,
+                          itemBuilder: (context, index) {
+                            final complaintData = complaints[index].data() as Map<String, dynamic>;
+                            final status = complaintData['status'] ?? 'Pending';
+                            
+                            return Card(
+                              margin: EdgeInsets.only(bottom: 16),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              color: Colors.white,
+                              elevation: 4,
+                              child: ExpansionTile(
+                                title: Text(
+                                  complaintData['title'] ?? 'N/A',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
+                                subtitle: Text(
+                                  "Status: $status",
+                                  style: TextStyle(
+                                      color: _getStatusColor(status)),
+                                ),
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // 2. Display the Base64 Image proof
+                                        _buildImage(complaintData['image_base64'] as String?), 
+                                        
+                                        Text("Description: ${complaintData['description'] ?? 'N/A'}"),
+                                        SizedBox(height: 8),
+                                        Text("Submitted On: ${complaintData['date'] ?? 'N/A'}"), 
+                                        SizedBox(height: 8),
+                                        Text(
+                                          "Current Status: $status",
+                                          style: TextStyle(
+                                            color: _getStatusColor(status),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         );
                       },
                     ),
@@ -197,13 +249,14 @@ class _MyComplaintsPageState extends State<MyComplaintsPage> {
     return ListTile(
       leading: Icon(icon, color: Colors.white),
       title: Text(title, style: TextStyle(color: Colors.white, fontSize: 16)),
-      onTap: () {
+      onTap: () async {
         if (title == 'New Complaint') {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => ComplaintPage()),
           );
         } else if (title == 'Logout') {
+          await FirebaseAuth.instance.signOut(); // Perform Firebase Logout
           Navigator.popUntil(context, (route) => route.isFirst);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(

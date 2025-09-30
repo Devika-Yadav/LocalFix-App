@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'package:firebase_storage/firebase_storage.dart';
+// import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // <--- ADD THIS IMPORT
+import 'dart:convert'; // <--- ADD THIS IMPORT (For Base64)
+
 
 class ComplaintPage extends StatefulWidget {
   @override
@@ -34,54 +37,75 @@ class _ComplaintPageState extends State<ComplaintPage> {
     }
   }
 
-  Future<void> _submitComplaint() async {
-    if (!_formKey.currentState!.validate() || selectedImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Please fill all required fields & select an image")),
-      );
-      return;
-    }
+// File: ComplaintPage.dart
 
-    try {
-      setState(() => isLoading = true);
-
-      // Upload image to Firebase Storage
-      final fileName = 'complaints/${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final uploadTask = FirebaseStorage.instance.ref(fileName).putFile(selectedImage!);
-      final snapshot = await uploadTask;
-      final imageUrl = await snapshot.ref.getDownloadURL();
-
-      // Save to Firestore
-      await FirebaseFirestore.instance.collection('complaints').add({
-        'title': titleController.text.trim(),
-        'description': complaintController.text.trim(),
-        'category': selectedCategory,
-        'location': locationController.text.trim(),
-        'name': nameController.text.trim(),
-        'mobile': mobileController.text.trim(),
-        'email': emailController.text.trim(),
-        'image_url': imageUrl,
-        'status': 'Pending',
-        'timestamp': FieldValue.serverTimestamp(),
-        'date': DateFormat('yyyy-MM-dd – kk:mm').format(DateTime.now()),
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Complaint submitted successfully ✅")),
-      );
-
-      // Reset form
-      _formKey.currentState!.reset();
-      setState(() {
-        selectedImage = null;
-        selectedCategory = 'Garbage';
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-    } finally {
-      setState(() => isLoading = false);
-    }
+Future<void> _submitComplaint() async {
+  // 1. Validation Check (Requires all fields AND an image)
+  if (!_formKey.currentState!.validate() || selectedImage == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Please fill all required fields & select an image")),
+    );
+    return;
   }
+
+  // 2. Get the Logged-in User (CRITICAL for linking the complaint)
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Error: User not logged in. Please log in again."), backgroundColor: Colors.red),
+    );
+    return;
+  }
+
+  try {
+    setState(() => isLoading = true);
+
+    // 3. Image Handling: Base64 Conversion (FIX FOR BILLING/STORAGE ERROR)
+    // Convert the image file into a Base64 string for direct storage in Firestore.
+    final bytes = await selectedImage!.readAsBytes();
+    final base64Image = base64Encode(bytes); 
+
+    // 4. Save to Firestore
+    await FirebaseFirestore.instance.collection('complaints').add({
+      'userId': user.uid, // <--- LINKS COMPLAINT TO THE CURRENT USER
+      'title': titleController.text.trim(),
+      'description': complaintController.text.trim(),
+      'category': selectedCategory,
+      'location': locationController.text.trim(),
+      'name': nameController.text.trim(),
+      'mobile': mobileController.text.trim(),
+      'email': emailController.text.trim(),
+      
+      'image_base64': base64Image, // <--- SAVES BASE64 STRING INSTEAD OF URL
+      
+      'status': 'Pending',
+      'timestamp': FieldValue.serverTimestamp(),
+      'date': DateFormat('yyyy-MM-dd – kk:mm').format(DateTime.now()),
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Complaint submitted successfully ✅ (Image embedded)")),
+    );
+
+    // 5. Reset form and navigate back
+    _formKey.currentState!.reset();
+    setState(() {
+      selectedImage = null;
+      selectedCategory = 'Garbage';
+      isLoading = false;
+    });
+    
+    // Use Navigator.pop to go back to MyComplaintsPage
+    Navigator.pop(context);
+
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Error submitting complaint: Check image size (max 1MB). Error: $e"), backgroundColor: Colors.red),
+    );
+  } finally {
+    setState(() => isLoading = false);
+  }
+}
 
   @override
   Widget build(BuildContext context) {
