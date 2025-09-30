@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'login_page.dart';
-import 'complaint_page.dart';
+// import 'complaint_page.dart';
 import 'admin_complaints_page.dart'; // Admin page
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'myComplaints_page.dart';
 
 
 class SignupPage extends StatefulWidget {
@@ -71,7 +72,7 @@ class _SignupPageState extends State<SignupPage> {
       // but ComplaintPage is acceptable if that's the desired first screen.
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => ComplaintPage()), 
+        MaterialPageRoute(builder: (_) => MyComplaintsPage()), 
       );
     }
 
