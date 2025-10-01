@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert'; // Required to decode the Base64 image string
+import 'profile.dart';
+import 'settings.dart';
 
 class AdminComplaintsPage extends StatefulWidget {
   @override
@@ -121,7 +123,7 @@ class _AdminComplaintsPageState extends State<AdminComplaintsPage> {
                 children: [
                   // Top App Bar
                   Container(
-                    height: 60,
+                    height: 90,
                     decoration: BoxDecoration(
                       color: Colors.deepPurple,
                       borderRadius: isSidebarOpen
@@ -212,11 +214,25 @@ class _AdminComplaintsPageState extends State<AdminComplaintsPage> {
           await FirebaseAuth.instance.signOut();
           // Navigate back to the login page (or first route)
           Navigator.popUntil(context, (route) => route.isFirst); 
-        } else if (filter == 'Profile' || filter == 'Settings') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$title page coming soon!')),
-          );
-        } else {
+        }else if (filter == 'Profile') {
+        // --- THIS BLOCK IS MODIFIED TO OPEN PROFILEPAGE ---
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const ProfilePage()),
+        );
+        // We close the sidebar upon navigation
+        setState(() {
+          isSidebarOpen = false;
+        });
+        // --------------------------------------------------
+      } else if (filter == 'Settings') {
+         Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const SettingsPage()),
+        );
+        // We close the sidebar upon navigation
+        setState(() {
+          isSidebarOpen = false;
+        });
+      }  else {
           // Set the filter and close the sidebar
           setState(() {
             currentFilter = filter;
@@ -294,6 +310,7 @@ class ComplaintCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text("Submitted On: ${complaintData['date'] ?? 'N/A'}"),
                 Text("Reporter: ${complaintData['name'] ?? 'N/A'}"),
+                Text("Mobile Number: ${complaintData['mobile'] ?? 'N/A'}"),
                 Text("Location: ${complaintData['location'] ?? 'N/A'}"),
                 const SizedBox(height: 12),
                 

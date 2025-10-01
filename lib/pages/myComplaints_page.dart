@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart'; // REQUIRED
 import 'package:firebase_auth/firebase_auth.dart';     // REQUIRED
 import 'dart:convert';                                 // REQUIRED
 import 'complaint_page.dart';
+import 'profile.dart';
+import 'settings.dart';
 
 class MyComplaintsPage extends StatefulWidget {
   @override
@@ -120,7 +122,7 @@ class _MyComplaintsPageState extends State<MyComplaintsPage> {
                 children: [
                   // Custom Top AppBar (UNCHANGED UI)
                   Container(
-                    height: 60,
+                    height: 90,
                     decoration: BoxDecoration(
                       color: Colors.deepPurple,
                       borderRadius: isSidebarOpen
@@ -258,7 +260,25 @@ class _MyComplaintsPageState extends State<MyComplaintsPage> {
         } else if (title == 'Logout') {
           await FirebaseAuth.instance.signOut(); // Perform Firebase Logout
           Navigator.popUntil(context, (route) => route.isFirst);
-        } else {
+        }else if (title == 'Profile') {
+        // --- THIS BLOCK IS MODIFIED TO OPEN PROFILEPAGE ---
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const ProfilePage()),
+        );
+        // We close the sidebar upon navigation
+        setState(() {
+          isSidebarOpen = false;
+        });
+        // --------------------------------------------------
+      } else if (title == 'Settings') {
+         Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const SettingsPage()),
+        );
+        // We close the sidebar upon navigation
+        setState(() {
+          isSidebarOpen = false;
+        });
+      } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('$title page coming soon!')),
           );
