@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'login_page.dart';
-import 'admin_complaints_page.dart'; // Admin page
+import 'admin_complaints_page.dart'; // Retained for role logic clarity (but no longer navigated to directly)
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'myComplaints_page.dart';
+import 'myComplaints_page.dart'; // Retained for role logic clarity (but no longer navigated to directly)
 
 
 class SignupPage extends StatefulWidget {
+  const SignupPage({super.key});
+
   @override
   _SignupPageState createState() => _SignupPageState();
 }
@@ -19,95 +21,96 @@ class _SignupPageState extends State<SignupPage> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  // --- New State for Password Visibility ---
+  bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
+
   String _selectedRole = 'Public User';
   final List<String> _roles = ['Public User', 'Govt. Officer'];
 
   bool _isLoading = false;
 
   void _submitSignup() async {
-  if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) return;
 
-  setState(() => _isLoading = true);
+    setState(() => _isLoading = true);
 
-  try {
-    // 1. Create User with Firebase Auth
-    final userCredential = await FirebaseAuth.instance
-        .createUserWithEmailAndPassword(
-      email: _emailController.text.trim(),
-      password: _passwordController.text.trim(),
-    );
-
-    // Get the User ID
-    final uid = userCredential.user!.uid;
-
-    // 2. Store User details (Name, Phone, Role) in Firestore
-    await FirebaseFirestore.instance.collection('users').doc(uid).set({
-      'uid': uid,
-      'email': _emailController.text.trim(),
-      'fullName': _fullNameController.text.trim(),
-      'phone': _phoneController.text.trim(),
-      'role': _selectedRole, // This is CRUCIAL for your login logic
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-
-    // Success message
-    // Place the success message BEFORE navigation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("✅ Account Created Successfully!"),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
-    
-    // Check if the role is 'Govt. Officer' first for clarity
-    if (_selectedRole == 'Govt. Officer') {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => AdminComplaintsPage()),
+    try {
+      // 1. Create User with Firebase Auth
+      final userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
       );
-    } else { // Must be 'Public User'
-      // You should use MyComplaintsPage (used in login) for consistency
-      // but ComplaintPage is acceptable if that's the desired first screen.
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => MyComplaintsPage()), 
+
+      final user = userCredential.user;
+
+      if (user != null) {
+        // 2. Send Email Verification (NEW)
+        await user.sendEmailVerification();
+
+        // 3. Store User details (Name, Phone, Role) in Firestore
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'uid': user.uid,
+          'email': _emailController.text.trim(),
+          'fullName': _fullNameController.text.trim(),
+          'phone': _phoneController.text.trim(),
+          'role': _selectedRole, 
+          'isEmailVerified': user.emailVerified, // Store initial verification status
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+
+        // 4. Success message and redirect to Login Page (NEW NAVIGATION LOGIC)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("✅ Account created! Please check your email to verify before logging in."),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        
+        // Redirect to Login Page to force email verification before access
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => LoginPage()),
+        );
+      }
+
+    } on FirebaseAuthException catch (e) {
+      // Handle specific errors like email-already-in-use
+      String message;
+      if (e.code == 'weak-password') {
+        message = 'The password provided is too weak.';
+      } else if (e.code == 'email-already-in-use') {
+        message = 'An account already exists for that email.';
+      } else {
+        message = e.message ?? 'Signup failed. Please try again.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error: $message"),
+          backgroundColor: Colors.red,
+        ),
       );
+    } finally {
+      setState(() => _isLoading = false);
     }
-
-  } on FirebaseAuthException catch (e) {
-    // Handle specific errors like email-already-in-use
-    String message;
-    if (e.code == 'weak-password') {
-      message = 'The password provided is too weak.';
-    } else if (e.code == 'email-already-in-use') {
-      message = 'An account already exists for that email.';
-    } else {
-      message = e.message ?? 'Signup failed. Please try again.';
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Error: $message"),
-        backgroundColor: Colors.red,
-      ),
-    );
-  } finally {
-    setState(() => _isLoading = false);
   }
-}
 
 
-  InputDecoration _inputDecoration(String label) {
+  // Modified to accept an optional suffixIcon
+  InputDecoration _inputDecoration(String label, {Widget? suffixIcon}) {
     return InputDecoration(
       labelText: label,
-      labelStyle: TextStyle(color: Colors.deepPurple),
+      labelStyle: const TextStyle(color: Colors.deepPurple),
+      suffixIcon: suffixIcon, // NEW: Added suffix icon support
       enabledBorder: OutlineInputBorder(
-        borderSide: BorderSide(color: Colors.deepPurple),
+        borderSide: const BorderSide(color: Colors.deepPurple),
         borderRadius: BorderRadius.circular(10),
       ),
       focusedBorder: OutlineInputBorder(
-        borderSide: BorderSide(color: Colors.deepPurple, width: 2),
+        borderSide: const BorderSide(color: Colors.deepPurple, width: 2),
         borderRadius: BorderRadius.circular(10),
       ),
     );
@@ -116,12 +119,12 @@ class _SignupPageState extends State<SignupPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFFF9F0FF),
+      backgroundColor: const Color(0xFFF9F0FF),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.black,
         elevation: 0,
-        leading: BackButton(),
+        leading: const BackButton(),
       ),
       body: Center(
         child: Container(
@@ -134,7 +137,7 @@ class _SignupPageState extends State<SignupPage> {
               BoxShadow(
                 color: Colors.grey.shade400,
                 blurRadius: 8,
-                offset: Offset(2, 4),
+                offset: const Offset(2, 4),
               ),
             ],
           ),
@@ -144,7 +147,7 @@ class _SignupPageState extends State<SignupPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  const Text(
                     "Sign Up",
                     style: TextStyle(
                       fontSize: 24,
@@ -152,7 +155,7 @@ class _SignupPageState extends State<SignupPage> {
                       color: Colors.orange,
                     ),
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
                   // Role Selector
                   DropdownButtonFormField<String>(
@@ -171,14 +174,14 @@ class _SignupPageState extends State<SignupPage> {
                     },
                   ),
 
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   TextFormField(
                     controller: _fullNameController,
                     decoration: _inputDecoration("Full Name"),
                     validator: (value) =>
                         value!.isEmpty ? 'Please enter your name' : null,
                   ),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   TextFormField(
                     controller: _emailController,
                     decoration: _inputDecoration("Email"),
@@ -186,7 +189,7 @@ class _SignupPageState extends State<SignupPage> {
                     validator: (value) =>
                         value!.contains('@') ? null : 'Enter a valid email',
                   ),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   TextFormField(
                     controller: _phoneController,
                     decoration: _inputDecoration("Phone Number"),
@@ -194,47 +197,78 @@ class _SignupPageState extends State<SignupPage> {
                     validator: (value) =>
                         value!.length < 10 ? 'Enter a valid phone number' : null,
                   ),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                  
+                  // --- Password Field (Modified for Visibility Toggle) ---
                   TextFormField(
                     controller: _passwordController,
-                    decoration: _inputDecoration("Password"),
-                    obscureText: true,
+                    obscureText: !_isPasswordVisible,
+                    decoration: _inputDecoration(
+                      "Password",
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                          color: Colors.deepPurple,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isPasswordVisible = !_isPasswordVisible;
+                          });
+                        },
+                      ),
+                    ),
                     validator: (value) => value!.length < 6
                         ? 'Password must be at least 6 characters'
                         : null,
                   ),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                  
+                  // --- Confirm Password Field (Modified for Visibility Toggle) ---
                   TextFormField(
                     controller: _confirmPasswordController,
-                    decoration: _inputDecoration("Confirm Password"),
-                    obscureText: true,
+                    obscureText: !_isConfirmPasswordVisible,
+                    decoration: _inputDecoration(
+                      "Confirm Password",
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _isConfirmPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                          color: Colors.deepPurple,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
+                          });
+                        },
+                      ),
+                    ),
                     validator: (value) => value != _passwordController.text
                         ? 'Passwords do not match'
                         : null,
                   ),
-                  SizedBox(height: 24),
+                  
+                  const SizedBox(height: 24),
                   ElevatedButton(
                     onPressed: _isLoading ? null : _submitSignup,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       padding:
-                          EdgeInsets.symmetric(horizontal: 50, vertical: 14),
+                          const EdgeInsets.symmetric(horizontal: 50, vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                     child: _isLoading
-                        ? CircularProgressIndicator(color: Colors.white)
-                        : Text(
-                            "Sign Up",
-                            style: TextStyle(fontSize: 16, color: Colors.white),
-                          ),
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text(
+                              "Sign Up",
+                              style: TextStyle(fontSize: 16, color: Colors.white),
+                            ),
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text("Already have an account? "),
+                      const Text("Already have an account? "),
                       GestureDetector(
                         onTap: () {
                           Navigator.push(
@@ -242,7 +276,7 @@ class _SignupPageState extends State<SignupPage> {
                             MaterialPageRoute(builder: (_) => LoginPage()),
                           );
                         },
-                        child: Text(
+                        child: const Text(
                           "Login",
                           style: TextStyle(
                             color: Colors.blue,
